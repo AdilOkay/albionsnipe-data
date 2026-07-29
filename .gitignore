@@ -2,3 +2,5 @@
 __pycache__/
 deploy/refresh.log
 refresh.log
+refresh.lock
+refresh-verrou.log
