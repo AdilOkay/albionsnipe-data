@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-build_routes.py - City Buy List per-city direct prices (the Routes tab price layer)
+build_routes.py - AlbionSnipe per-city direct prices (the Routes tab price layer)
 
 Emits docs/data/routes.json: for every id in the routesmeta.json universe, the
 LIVE standing orders per (quality, city) from AODP - the one price layer no
@@ -40,7 +40,7 @@ CITIES = ["Bridgewatch", "Fort Sterling", "Lymhurst", "Martlock", "Thetford", "C
 QUALITIES = "1,2,3,4,5"
 CHUNK = 50
 SLEEP = 2.0
-UA = "city-buy-list-pro/1.0 (routes dataset builder)"
+UA = "albionsnipe-app/1.0 (routes dataset builder)"
 
 
 def get_json(url, tries=10):
