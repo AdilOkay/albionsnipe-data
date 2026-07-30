@@ -133,7 +133,11 @@ def main():
             skipped.append(key)
             continue
         recipe = recipes_data.get(key)
-        artefact = bool(recipe) and any("ARTEFACT_" in mat for mat, _cnt in recipe)
+        # row[0] et pas un depaquetage a deux : depuis le 29/07 une ligne d'ingredient porte des
+        # champs en plus (@amountcrafted, @maxreturnamount). Le depaquetage strict levait
+        # ValueError: too many values to unpack, ce qui a fait echouer CHAQUE refresh depuis, en
+        # silence, et gele la donnee Black Market pendant plus de 32 h.
+        artefact = bool(recipe) and any("ARTEFACT_" in row[0] for row in recipe)
         items[key] = {
             "cat": meta["cat"], "sub": meta["sub"], "tier": tier,
             "artefact": artefact, "name": (names.get(base) or {}).get("en", base),

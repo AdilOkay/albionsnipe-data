@@ -39,10 +39,22 @@ exit /b 3
 :verrou_ok
 echo ==== %DATE% %TIME% refresh start ==== >> "%LOG%"
 
+REM Chaque builder est teste. Avant le 30/07 ils etaient appeles sans regarder leur code retour :
+REM build_baseline.py et build_materials.py plantaient a CHAQUE run depuis le 29/07 (depaquetage
+REM a deux sur des lignes de recette qui avaient gagne des champs), le .bat continuait, commitait
+REM routes et toptraded seuls, et affichait "pushed OK". Resultat : la donnee Black Market du site
+REM gelee plus de 32 h sans le moindre signal. Un echec doit se voir dans le log ET dans le commit.
+REM Quatre appels a plat, un test derriere chacun. PAS de boucle for et PAS d'accumulation dans une
+REM variable : ca demanderait EnableDelayedExpansion, que ce fichier n'active pas, et le bloc
+REM parenthese est precisement ce qui avait produit trois bugs invisibles a la relecture le 30/07.
 call python scripts\build_baseline.py   >> "%LOG%" 2>&1
+if errorlevel 1 echo *** ECHEC build_baseline.py - baseline.json reste PERIME >> "%LOG%"
 call python scripts\build_materials.py  >> "%LOG%" 2>&1
+if errorlevel 1 echo *** ECHEC build_materials.py - materials.json reste PERIME >> "%LOG%"
 call python scripts\build_toptraded.py  >> "%LOG%" 2>&1
+if errorlevel 1 echo *** ECHEC build_toptraded.py - toptraded.json reste PERIME >> "%LOG%"
 call python scripts\build_routes.py     >> "%LOG%" 2>&1
+if errorlevel 1 echo *** ECHEC build_routes.py - routes.json reste PERIME >> "%LOG%"
 
 git add docs/data/baseline.json docs/data/materials.json docs/data/toptraded.json docs/data/routes.json
 git diff --cached --quiet && ( echo no data changes, nothing to commit >> "%LOG%" & goto :done )

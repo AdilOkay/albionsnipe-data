@@ -40,8 +40,10 @@ def materials_from_recipes():
     mats = set()
     for r in data.values():
         if r:
-            for uniquename, _count in r:
-                mats.add(uniquename)
+            # row[0] et pas un depaquetage a deux : voir le meme correctif dans build_baseline.py.
+            # Une ligne d'ingredient porte des champs en plus depuis le 29/07.
+            for row in r:
+                mats.add(row[0])
     return mats
 
 
