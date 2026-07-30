@@ -92,7 +92,7 @@ f.WriteLine "refresh demarre " & Now
 f.Close
 
 On Error Resume Next
-rc = sh.Run("""" & bat & """", 0, True)
+rc = sh.Run("""" & bat & """ /locked", 0, True)   ' /locked : le verrou est deja pose ici (30/07)
 Dim err_run
 err_run = Err.Number
 On Error GoTo 0
