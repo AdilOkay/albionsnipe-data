@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-build_baseline.py - City Buy List Black Market baseline
+build_baseline.py - AlbionSnipe Black Market baseline
 
 Emits docs/data/baseline.json: the file every other dataset keys off
 (recipes.json, materials.json, craftmeta.json all mirror its item set).
 For every key already in recipes.json (the frozen, patch-only gear universe:
 T4-T8 weapons/armors/head/shoes/offhands/bags/capes, base + crafted enchant
 levels), the Black Market baseline per quality:
-  - a7 / a30 : volume-weighted average price (AODP history, last 7 / 30 days)
+  - a1 / a7 / a30 : volume-weighted average price (AODP history, last 1 / 7 / 30 days)
   - vol7     : mean items sold per day at the Black Market (last 7 days)
   - bm_buy, bm_buy_ts : the live Black Market buy order + its timestamp
                          (AODP prices, snapshot at build time)
@@ -40,7 +40,7 @@ BM_LOC = "Black Market"
 QUALITIES = "1,2,3,4,5"
 CHUNK = 50
 SLEEP = 2.0
-UA = "city-buy-list-pro/1.0 (baseline dataset builder)"
+UA = "albionsnipe-app/1.0 (baseline dataset builder)"
 KEY_RE = re.compile(r"^(T(\d)_.+?)(?:@(\d))?$")
 
 
@@ -173,6 +173,14 @@ def main():
             q = str(row["quality"])
             slot = items[row["item_id"]].setdefault("q", {}).setdefault(q, {})
             a7, a30 = wmean(series[-7:]), wmean(series[-30:])
+            # a1 = the LAST day alone. Added 30/07 for one reason: with only a7 and a30 the app
+            # cannot tell a dip in a rising item from a real turn - both print `over avg` negative
+            # and `trend` positive (MECANIQUE_MARCHE_ALBION section 9 point 8). What is missing is the
+            # RECENT DIRECTION of the BM order, and a1 against a7 gives it. Free: the series is
+            # already fetched at time-scale 24, so this is arithmetic on data we hold, no extra call.
+            a1 = wmean(series[-1:])
+            if a1 is not None:
+                slot["a1"] = a1
             if a7 is not None:
                 slot["a7"] = a7
                 vol7 = sum(p.get("item_count", 0) for p in series[-7:]) / 7
@@ -189,7 +197,7 @@ def main():
         "server": args.server,
         "notes": {
             "scope": "T4-T8 gear (weapons, armors, head, shoes, offhands, bags, capes)",
-            "a7_a30": "volume-weighted mean of AODP Black Market daily history",
+            "a1_a7_a30": "volume-weighted mean of AODP Black Market daily history (1/7/30 days); a1 vs a7 = recent direction",
             "vol7": "mean items/day at Black Market over last 7 days (item_count)",
             "bm_buy": "AODP buy_price_max at Black Market at build time; check bm_buy_ts for staleness",
             "missing": "items without 'q' have no reliable Black Market baseline; the app must show 'no baseline', never a guess",
