@@ -17,6 +17,15 @@ toptraded.json. Timestamps ride along so the app can show price age instead of
 pretending AODP is live (it is as fresh as the last player upload, and that
 honesty is the edge over tools that hide it).
 
+  - stuck : how long p has held its CURRENT value, carried across runs through a
+            local state file. AODP's own timestamp cannot answer this - it moves
+            on every player upload even when the order behind it never changed,
+            so a price frozen for four days still reads "2h old". Measured 31/07
+            on Robe of Purity 6.3: buy side pinned at ~749,98x since 28/07 while
+            its timestamp refreshed all day. Testers read that as "the app does
+            not update"; it was the market that was not moving, and nothing in
+            the app could say so.
+
 Rebuild alongside baseline (2x/day). Same AODP etiquette as the sibling
 builders: chunked requests, 2s pacing, per-call scoped backoff.
 
@@ -36,10 +45,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 META = ROOT / "docs" / "data" / "routesmeta.json"
 OUT = ROOT / "docs" / "data" / "routes.json"
+# Local, never published, gitignored: {"id|q|cityIndex": [price, firstSeenEpochMinutes]}. It is
+# what lets a run know that a price has not moved since a PREVIOUS run - AODP cannot say it, since
+# it re-stamps its timestamp on every player upload even when the order itself never changed.
+SEEN = ROOT / "scripts" / "data" / "routes_seen.json"
 CITIES = ["Bridgewatch", "Fort Sterling", "Lymhurst", "Martlock", "Thetford", "Caerleon", "Brecilien"]
 QUALITIES = "1,2,3,4,5"
 CHUNK = 50
 SLEEP = 2.0
+STUCK_MIN_H = 24        # only publish a "frozen since" marker past this age; under it, it is just a calm market
+# Tolerance on "the price did not move". Measured 31/07 on Robe of Purity 6.3 at Lymhurst: 749,996
+# -> 749,986 -> 749,981 over four days, a reseller nudging a few silver to stay on top. Comparing
+# exact values called that four separate prices and reset the counter every time - it would have
+# missed the very case that made testers report the tab as frozen. 0.5% is noise to a trader.
+STUCK_TOL = 0.005
 UA = "albionsnipe-app/1.0 (routes dataset builder)"
 
 
@@ -83,6 +102,15 @@ def epoch_min(iso):
         return 0
 
 
+def load_seen():
+    """Previous run's {key: [price, firstSeenMinutes]}. Missing/corrupt = start over: the
+    markers simply reappear after STUCK_MIN_H, nothing breaks."""
+    try:
+        return json.loads(SEEN.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--server", default="europe", choices=["europe", "west", "east"])
@@ -91,6 +119,10 @@ def main():
     ids = json.loads(META.read_text(encoding="utf-8"))["ids"]
     cidx = {c: str(i) for i, c in enumerate(CITIES)}
     print(f"{len(ids)} ids from routesmeta.json -> AODP {args.server} prices (7 cities x q1-5)", flush=True)
+
+    seen_old = load_seen()
+    seen_new = {}
+    now_min = int(time.time() // 60)
 
     items, entries = {}, 0
     for i in range(0, len(ids), CHUNK):
@@ -108,13 +140,34 @@ def main():
             ci = cidx.get(row.get("city"))
             if ci is None:
                 continue
-            rec = [p, epoch_min(row.get("sell_price_min_date"))]
+            t = epoch_min(row.get("sell_price_min_date"))
+            rec = [p, t]
             if b:
                 rec += [b, epoch_min(row.get("buy_price_max_date"))]
             items.setdefault(row["item_id"], {}).setdefault(str(row["quality"]), {})[ci] = rec
             entries += 1
+            # how long this exact sell price has been the cheapest standing order. Carried over
+            # from the previous run while the number does not move; reset the moment it does.
+            if p:
+                key = f'{row["item_id"]}|{row["quality"]}|{ci}'
+                prev = seen_old.get(key)
+                # keep the ORIGINAL reference price, not the latest one: re-anchoring on every
+                # tolerated nudge would let a drift of +0.4% per run walk the price anywhere
+                # while the counter kept saying "unchanged".
+                seen_new[key] = prev if (prev and abs(p - prev[0]) <= prev[0] * STUCK_TOL) \
+                    else [p, t or now_min]
         print(f"  {min(i+CHUNK, len(ids))}/{len(ids)}  items-with-orders={len(items)}", flush=True)
         time.sleep(SLEEP)
+
+    # Publish only the markers worth showing. A price that has held for a few hours is a calm
+    # market; one that has held for days is an order nobody fills, and the app has to say so -
+    # that is exactly what a tester reads as "the price never updates".
+    stuck, floor = {}, STUCK_MIN_H * 60
+    for key, (p, first) in seen_new.items():
+        if now_min - first < floor:
+            continue
+        iid, q, ci = key.rsplit("|", 2)
+        stuck.setdefault(iid, {}).setdefault(q, {})[ci] = first
 
     payload = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -125,12 +178,20 @@ def main():
             "cityIndex": "index into the cities array",
             "freshness": "AODP is as fresh as the last player upload; the app must show age from t, never claim live",
             "missing": "no entry = no standing order seen; the app must show a gap, never a guess",
+            "stuck": f"stuck[id][quality][cityIndex] = epoch MINUTES when p was FIRST seen at its current value, published only past {STUCK_MIN_H}h. t says when someone last looked at the market; this says when the price itself last moved. Absent = the price has moved recently.",
         },
         "items": items,
+        "stuck": stuck,
     }
     OUT.write_text(json.dumps(payload, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
+    try:
+        SEEN.parent.mkdir(parents=True, exist_ok=True)
+        SEEN.write_text(json.dumps(seen_new, separators=(",", ":")), encoding="utf-8")
+    except Exception as e:
+        print(f"    warning: could not write {SEEN} ({e}); frozen-price markers restart next run")
     print(f"\nwrote {OUT}  ({OUT.stat().st_size/1024:.0f} KB)")
     print(f"items with at least one order {len(items)}/{len(ids)} | (item,q,city) entries {entries}")
+    print(f"prices unchanged for {STUCK_MIN_H}h+ {sum(len(c) for q in stuck.values() for c in q.values())}/{len(seen_new)}")
 
 
 if __name__ == "__main__":

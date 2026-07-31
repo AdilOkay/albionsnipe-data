@@ -55,8 +55,15 @@ call python scripts\build_toptraded.py  >> "%LOG%" 2>&1
 if errorlevel 1 echo *** ECHEC build_toptraded.py - toptraded.json reste PERIME >> "%LOG%"
 call python scripts\build_routes.py     >> "%LOG%" 2>&1
 if errorlevel 1 echo *** ECHEC build_routes.py - routes.json reste PERIME >> "%LOG%"
+REM AJOUTE 31/07. journals.json porte des PRIX (journal vide / plein par ville) et son propre
+REM en-tete dit "rebuild alongside baseline/materials (2x/day)" - il ne l'a jamais ete. Il ne
+REM bougeait qu'aux ships de l'app, et build_public.py, une fois capable de dater ce qu'il
+REM embarque, l'a mesure a 231 h. La couche journaux du Craft Planner tournait donc sur des
+REM prix de dix jours pendant que les quatre autres datasets avaient trois heures.
+call python scripts\build_journals.py   >> "%LOG%" 2>&1
+if errorlevel 1 echo *** ECHEC build_journals.py - journals.json reste PERIME >> "%LOG%"
 
-git add docs/data/baseline.json docs/data/materials.json docs/data/toptraded.json docs/data/routes.json
+git add docs/data/baseline.json docs/data/materials.json docs/data/toptraded.json docs/data/routes.json docs/data/journals.json
 git diff --cached --quiet && ( echo no data changes, nothing to commit >> "%LOG%" & goto :done )
 git commit -m "chore: local scheduled price data refresh" >> "%LOG%" 2>&1
 git push >> "%LOG%" 2>&1 && ( echo pushed OK >> "%LOG%" ) || ( echo PUSH FAILED - check git credentials >> "%LOG%" )

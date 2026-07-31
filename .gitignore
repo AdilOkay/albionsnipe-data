@@ -3,4 +3,5 @@ __pycache__/
 deploy/refresh.log
 refresh.log
 refresh.lock
+scripts/data/routes_seen.json
 refresh-verrou.log
