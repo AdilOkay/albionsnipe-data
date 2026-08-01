@@ -39,17 +39,24 @@ def load_dump(path):
 
 
 def craft_resources(node):
-    """craftingrequirements block -> [[market_id, count], ...] (enchanted mats carry @N)."""
+    """craftingrequirements -> ([[market_id, count, noret?], ...], batch). See build_recipes.py.
+
+    This is the script that owns FOOD and POTIONS, so it is the one where both facts actually
+    bite: a cooked meal makes 10 per craft (fish meals make 1), a potion 5 or 10, and the
+    avalonian energy token carries @maxreturnamount=0 - both reported by a crash-tester, both
+    read straight from the dump rather than assumed.
+    """
     if not isinstance(node, dict):
-        return None
+        return None, 1
     cr = node.get("craftingrequirements")
     if isinstance(cr, list):
         cr = cr[0] if cr else None
     if not isinstance(cr, dict):
-        return None
+        return None, 1
     res = cr.get("craftresource")
     if res is None:
-        return None
+        return None, 1
+    batch = int(cr.get("@amountcrafted", 1) or 1)
     res = res if isinstance(res, list) else [res]
     out = []
     for x in res:
@@ -58,8 +65,11 @@ def craft_resources(node):
             lvl = int(x.get("@enchantmentlevel", 0) or 0)
             if lvl > 0:
                 mid = f"{mid}@{lvl}"
-            out.append([mid, int(x["@count"])])
-    return out or None
+            row = [mid, int(x["@count"])]
+            if str(x.get("@maxreturnamount", "")) == "0":
+                row.append(0)              # never refunded by the return rate
+            out.append(row)
+    return (out or None), batch
 
 
 def market_key(uniquename):
@@ -110,7 +120,8 @@ def item_iv(key, recipes, idx, seen, depth=0):
     if not r:
         return None
     total = 0
-    for mat, count in r:
+    for row in r:                        # [mat, count] or [mat, count, 0] when the
+        mat, count = row[0], row[1]      # material is never refunded (see build_recipes.py)
         base = re.sub(r"@\d+$", "", mat)
         iv = idx.get(base, (None, None))[0]
         if iv is None:
@@ -144,6 +155,7 @@ def main():
 
     recipes_payload = json.loads(RECIPES.read_text(encoding="utf-8"))
     recipes = recipes_payload["items"]
+    batches = recipes_payload.setdefault("batch", {})    # units produced per craft, when not 1
     craftmeta_payload = json.loads(CRAFTMETA.read_text(encoding="utf-8"))
     craftmeta = craftmeta_payload["items"]
     cat2city = {k: v for k, v in json.loads(CITIES.read_text(encoding="utf-8")).items() if not k.startswith("_")}
@@ -155,13 +167,17 @@ def main():
     for e in targets:
         un = e["@uniquename"]
         key = market_key(un)
-        r = craft_resources(e)
+        r, batch = craft_resources(e)
         if not r:
             continue
         if key not in recipes:
             added_keys.append(key)
         all_keys.append(key)
         recipes[key] = r
+        if batch != 1:
+            batches[key] = batch
+        elif key in batches:
+            del batches[key]               # a patch can turn a batch recipe into a single one
         fc = node_focus(e)
         if fc is not None:
             focus_by_key[key] = fc

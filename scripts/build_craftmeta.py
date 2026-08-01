@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-build_craftmeta.py - City Buy List craft metadata (item value + bonus city)
+build_craftmeta.py - AlbionSnipe craft metadata (item value + bonus city)
 
 Emits docs/data/craftmeta.json: for every baseline gear key,
   - iv : Item Value = sum of the materials' @itemvalue (ao-bin-dumps) x count.
@@ -17,6 +17,13 @@ Emits docs/data/craftmeta.json: for every baseline gear key,
          enchanted resource key (T4_METALBAR_LEVEL1@1) reads its LEVELn
          uniquename directly. Missing = the node has no @craftingfocus; the
          app shows focus n/a (never a guess).
+  - jb : crafting-journal branch (W/M/H/T = Warrior/Mage/Hunter/Toolmaker forge), read
+         from the journalitem famefillingmissions validitem lists - the game's own
+         explicit item->journal mapping (1440 ids, none ambiguous). Missing = the item
+         fills no journal (royal/faction gear, specialty capes): books/fame n/a.
+  - ff : @destinyandjournalcraftfamefactor (1.1-1.4, artefact/avalonian lines only).
+         Multiplies the craft fame counted for the Destiny Board AND journals.
+         Missing = factor 1 (standard items carry no attribute).
   - ur : [resource id, count] to ENCHANT this key up from the level below, read
          from the enchantment node's <upgraderequirements>. This is a different
          path from craftingrequirements: crafting an @N item eats enchanted
@@ -77,6 +84,34 @@ def node_upgrade(node):
     return [r["@uniquename"], int(float(r["@count"]))]
 
 
+def journal_map(dump):
+    """base uniquename -> branch letter, from the journalitem validitem lists (the game's
+    own mapping; a tier's journal only lists that tier's items, so the full base id is
+    the key). Only the four crafting branches; gathering/mercenary journals have no
+    craftitemfame block and are skipped."""
+    frag2letter = {"WARRIOR": "W", "MAGE": "M", "HUNTER": "H", "TOOLMAKER": "T"}
+    out = {}
+    group = dump["items"].get("journalitem") or []
+    if not isinstance(group, list):
+        group = [group]
+    for j in group:
+        if not isinstance(j, dict) or "@uniquename" not in j:
+            continue
+        m = re.match(r"^T\d+_JOURNAL_([A-Z]+)$", j["@uniquename"])
+        if not m or m.group(1) not in frag2letter:
+            continue
+        cif = (j.get("famefillingmissions") or {}).get("craftitemfame")
+        if not isinstance(cif, dict):
+            continue
+        vi = cif.get("validitem") or []
+        if isinstance(vi, dict):
+            vi = [vi]
+        for v in vi:
+            if isinstance(v, dict) and v.get("@id"):
+                out[v["@id"]] = frag2letter[m.group(1)]
+    return out
+
+
 def index_dump(dump):
     """uniquename -> (@itemvalue, @craftingcategory, base focus, {enchant level -> focus})."""
     idx = {}
@@ -100,8 +135,9 @@ def index_dump(dump):
                 lu = node_upgrade(en)
                 if lu is not None:
                     ure[lvl] = lu
+            ff = e.get("@destinyandjournalcraftfamefactor")
             idx[e["@uniquename"]] = (float(iv) if iv is not None else None, e.get("@craftingcategory"),
-                                     node_focus(e), fce, ure)
+                                     node_focus(e), fce, ure, float(ff) if ff is not None else None)
     return idx
 
 
@@ -117,9 +153,10 @@ def item_iv(key, recipes, idx, missing, seen, depth=0):
     if not r:
         return None
     total = 0
-    for mat, count in r:
+    for row in r:                        # [mat, count] or [mat, count, 0] when the
+        mat, count = row[0], row[1]      # material is never refunded (see build_recipes.py)
         mat_un = re.sub(r"@\d+$", "", mat)               # T4_METALBAR_LEVEL1@1 -> T4_METALBAR_LEVEL1
-        mat_iv = idx.get(mat_un, (None, None, None, None, None))[0]
+        mat_iv = idx.get(mat_un, (None,) * 6)[0]
         if mat_iv is None:
             mat_iv = item_iv(mat, recipes, idx, missing, seen, depth + 1)   # nested craftable
         if mat_iv is None:
@@ -137,16 +174,18 @@ def main():
     keys = list(json.loads(BASELINE.read_text(encoding="utf-8"))["items"].keys())
     recipes = json.loads(RECIPES.read_text(encoding="utf-8"))["items"]
     cat2city = {k: v for k, v in json.loads(CITIES.read_text(encoding="utf-8")).items() if not k.startswith("_")}
-    idx = index_dump(load_dump(args.dump))
-    print(f"{len(keys)} baseline keys | {len(idx)} dump uniquenames | {len(cat2city)} bonus categories")
+    dump = load_dump(args.dump)
+    idx = index_dump(dump)
+    jmap = journal_map(dump)
+    print(f"{len(keys)} baseline keys | {len(idx)} dump uniquenames | {len(cat2city)} bonus categories | {len(jmap)} journal-mapped ids")
 
-    items, iv_ok, iv_null, bc_ok, fc_ok, ur_ok = {}, 0, 0, 0, 0, 0
+    items, iv_ok, iv_null, bc_ok, fc_ok, ur_ok, jb_ok, ff_ok = {}, 0, 0, 0, 0, 0, 0, 0
     missing_mats = {}
     for key in keys:
         base_un = re.sub(r"@\d+$", "", key)              # dump uniquename = market id minus @N
         m = re.search(r"@(\d+)$", key)
         ench_n = int(m.group(1)) if m else 0
-        _, cc, fc_base, fce, ure = idx.get(base_un, (None, None, None, {}, {}))
+        _, cc, fc_base, fce, ure, ff = idx.get(base_un, (None, None, None, {}, {}, None))
         bc = cat2city.get(cc) if cc else None
         # ur belongs to the enchant level itself: @N's ur is what it costs to reach @N from @N-1.
         # An unenchanted key has nothing to upgrade from, so no ur - and @4 has none either.
@@ -179,6 +218,13 @@ def main():
         if ur is not None:
             rec["ur"] = ur
             ur_ok += 1
+        jb = jmap.get(base_un)
+        if jb:
+            rec["jb"] = jb
+            jb_ok += 1
+        if ff is not None:
+            rec["ff"] = ff
+            ff_ok += 1
         items[key] = rec or None
 
     payload = {
@@ -187,13 +233,15 @@ def main():
             "bc": "city whose +15% crafting specialty covers this item's @craftingcategory. Missing = no specialty (royal/faction/crystal-league sets).",
             "fc": "base crafting focus (@craftingfocus) of THIS market key's own recipe (gear @N = the enchantment-N node, each level has its own focus). Missing = no @craftingfocus on the node; app shows focus n/a.",
             "ur": "[resource id, count] to ENCHANT up to this key from the level below (<upgraderequirements>): runes/souls/relics only, no silver, no focus, quality preserved. Only on @1..@3 - x.3 to x.4 has no upgrade path, x.4 is craft-only.",
+            "jb": "crafting-journal branch (W/M/H/T) from the dump's validitem lists. Missing = fills no journal (royal/faction gear, specialty capes): app shows books/fame n/a.",
+            "ff": "@destinyandjournalcraftfamefactor - craft fame multiplier (Destiny Board AND journals), artefact/avalonian lines only. Missing = 1.",
             "source": "ao-bin-dumps + scripts/data/bonus_cities.json; rebuild on game patch only",
         },
         "items": items,
     }
     OUT.write_text(json.dumps(payload, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
     print(f"wrote {OUT}  ({OUT.stat().st_size/1024:.0f} KB)")
-    print(f"iv computed {iv_ok}/{len(keys)} | iv null {iv_null} | bonus city {bc_ok}/{len(keys)} | focus {fc_ok}/{len(keys)} | upgrade recipe {ur_ok}/{len(keys)}")
+    print(f"iv computed {iv_ok}/{len(keys)} | iv null {iv_null} | bonus city {bc_ok}/{len(keys)} | focus {fc_ok}/{len(keys)} | upgrade recipe {ur_ok}/{len(keys)} | journal branch {jb_ok}/{len(keys)} | fame factor {ff_ok}/{len(keys)}")
     if missing_mats:
         top = sorted(missing_mats.items(), key=lambda x: -x[1])[:10]
         print("materials without @itemvalue (item iv -> null):", top)

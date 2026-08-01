@@ -4,4 +4,6 @@ deploy/refresh.log
 refresh.log
 refresh.lock
 scripts/data/routes_seen.json
+scripts/data/_aobin_items.json
+scripts/data/_aobin_items.part
 refresh-verrou.log

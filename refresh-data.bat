@@ -44,13 +44,34 @@ REM build_baseline.py et build_materials.py plantaient a CHAQUE run depuis le 29
 REM a deux sur des lignes de recette qui avaient gagne des champs), le .bat continuait, commitait
 REM routes et toptraded seuls, et affichait "pushed OK". Resultat : la donnee Black Market du site
 REM gelee plus de 32 h sans le moindre signal. Un echec doit se voir dans le log ET dans le commit.
-REM Quatre appels a plat, un test derriere chacun. PAS de boucle for et PAS d'accumulation dans une
-REM variable : ca demanderait EnableDelayedExpansion, que ce fichier n'active pas, et le bloc
-REM parenthese est precisement ce qui avait produit trois bugs invisibles a la relecture le 30/07.
+REM Des appels A PLAT, un test derriere chacun (ils etaient quatre le 30/07, sept aujourd'hui).
+REM PAS de boucle for et PAS d'accumulation dans une variable : ca demanderait
+REM EnableDelayedExpansion, que ce fichier n'active pas, et le bloc parenthese est precisement ce
+REM qui avait produit trois bugs invisibles a la relecture le 30/07.
+REM AJOUTE 01/08. Les jeux de donnees issus du dump du jeu (recipes, craftmeta) ne changent qu'au
+REM patch, donc ils etaient hors planning - a raison. Ce qui manquait, c'est ce qui les y remet :
+REM ils n'etaient reconstruits que quand quelqu'un y pensait, et le jour d'un patch l'app sert les
+REM recettes de la version precedente sans le moindre signal. check_patch.py demande son empreinte
+REM a l'amont (une requete HEAD, pas de corps) et ne reconstruit que si elle a bouge. Il garde
+REM aussi le dump en cache local, dont build_routesmeta.py se sert plus bas.
+REM Il DOIT passer en premier : un patch ajoute des cles que baseline et materials indexent.
+call python scripts\check_patch.py      >> "%LOG%" 2>&1
+if errorlevel 1 echo *** ECHEC check_patch.py - recipes/craftmeta restent sur l'ancien patch >> "%LOG%"
+
 call python scripts\build_baseline.py   >> "%LOG%" 2>&1
 if errorlevel 1 echo *** ECHEC build_baseline.py - baseline.json reste PERIME >> "%LOG%"
 call python scripts\build_materials.py  >> "%LOG%" 2>&1
 if errorlevel 1 echo *** ECHEC build_materials.py - materials.json reste PERIME >> "%LOG%"
+REM AJOUTE 01/08, et l'ordre est la raison d'etre de cette ligne. build_routesmeta.py annoncait
+REM "rebuild only on a game patch" dans son propre en-tete, et c'est faux : son univers est
+REM baseline.json + materials.json, reconstruits deux fois par jour sur le marche reel. Mesure le
+REM 01/08 : le rebuilder contre un dump INCHANGE deplace quand meme 9 ids dedans et 9 dehors.
+REM Laisse a la cadence des patchs, l'univers de Routes est la photo du marche du jour ou
+REM quelqu'un y a pense pour la derniere fois. Il passe donc APRES ses deux sources et AVANT
+REM build_routes.py, qui price la liste d'ids qu'il produit. Le --dump evite de retelecharger
+REM 16 Mo toutes les 4 h pour relire les memes octets.
+call python scripts\build_routesmeta.py --dump scripts\data\_aobin_items.json  >> "%LOG%" 2>&1
+if errorlevel 1 echo *** ECHEC build_routesmeta.py - routesmeta.json reste PERIME >> "%LOG%"
 call python scripts\build_toptraded.py  >> "%LOG%" 2>&1
 if errorlevel 1 echo *** ECHEC build_toptraded.py - toptraded.json reste PERIME >> "%LOG%"
 call python scripts\build_routes.py     >> "%LOG%" 2>&1
@@ -63,7 +84,10 @@ REM prix de dix jours pendant que les quatre autres datasets avaient trois heure
 call python scripts\build_journals.py   >> "%LOG%" 2>&1
 if errorlevel 1 echo *** ECHEC build_journals.py - journals.json reste PERIME >> "%LOG%"
 
-git add docs/data/baseline.json docs/data/materials.json docs/data/toptraded.json docs/data/routes.json docs/data/journals.json
+REM routesmeta bouge a chaque run (univers marche), recipes/craftmeta seulement au patch, et
+REM aobin_stamp.json note quel dump a servi - il est VERSIONNE expres : sans lui, un clone neuf
+REM ne sait pas d'ou viennent les datasets publies et reconstruit tout pour rien au premier run.
+git add docs/data/baseline.json docs/data/materials.json docs/data/toptraded.json docs/data/routes.json docs/data/journals.json docs/data/routesmeta.json docs/data/recipes.json docs/data/craftmeta.json scripts/data/aobin_stamp.json
 git diff --cached --quiet && ( echo no data changes, nothing to commit >> "%LOG%" & goto :done )
 git commit -m "chore: local scheduled price data refresh" >> "%LOG%" 2>&1
 git push >> "%LOG%" 2>&1 && ( echo pushed OK >> "%LOG%" ) || ( echo PUSH FAILED - check git credentials >> "%LOG%" )

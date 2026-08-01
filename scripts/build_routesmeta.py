@@ -18,8 +18,20 @@ dataset carries:
            shop-categories picker can filter them too).
 
 Source: ao-bin-dumps items.json (@weight/@shopcategory/@shopsubcategory1/@tier,
-same canonical dump as build_recipes.py). Rebuild only on a game patch.
+same canonical dump as build_recipes.py).
 Prices are NOT here: build_routes.py (2x/day) prices this universe.
+
+CADENCE, corrigee le 01/08: cet en-tete disait "rebuild only on a game patch".
+C'etait faux, et ca a coute de la couverture. Les FAITS (poids, categories)
+viennent bien du dump et ne bougent qu'au patch, mais l'UNIVERS, lui, est
+baseline.json + materials.json, tous deux reconstruits 2x/jour sur le marche
+reel. Mesure ce jour-la: relance contre un dump INCHANGE, 9 ids entrent et 9
+sortent - des artefacts crystal et un plan de cape de Brecilien qui gagnent ou
+perdent un prix Black Market. A la cadence des patchs, la liste d'ids de Routes
+est la photo du marche du dernier rebuild: ce qui s'echange aujourd'hui manque,
+ce qui a disparu est encore price. Il tourne donc a chaque refresh, apres ses
+deux sources et avant build_routes.py, avec --dump sur le cache local pour ne
+pas retelecharger 16 Mo (voir refresh-data.bat et scripts/check_patch.py).
 
 Market-id convention (mirrors build_recipes.py): enchanted resources trade as
 "<uniquename>@<level>" where the uniquename already carries _LEVELn

@@ -1,0 +1,11 @@
+{
+ "etag": "7fdb7da3d5dc31a87b976f6472171f08f4ce2fdf469307f82032d9292f183379",
+ "size": 17219057,
+ "checked_at": "2026-08-01T01:25:38Z",
+ "source": "https://raw.githubusercontent.com/ao-data/ao-bin-dumps/master/items.json",
+ "rebuilt": [
+  "recipes.json",
+  "craftmeta.json"
+ ],
+ "note": "fingerprint of the ao-bin-dumps items.json the published patch-only datasets were built from. Written only after every builder succeeded, so a partial rebuild is retried instead of being recorded as done."
+}
