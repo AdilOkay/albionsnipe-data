@@ -72,6 +72,14 @@ REM build_routes.py, qui price la liste d'ids qu'il produit. Le --dump evite de 
 REM 16 Mo toutes les 4 h pour relire les memes octets.
 call python scripts\build_routesmeta.py --dump scripts\data\_aobin_items.json  >> "%LOG%" 2>&1
 if errorlevel 1 echo *** ECHEC build_routesmeta.py - routesmeta.json reste PERIME >> "%LOG%"
+REM AJOUTE 01/08. items.json (les noms localises) n'avait AUCUN generateur : fait a la main une
+REM fois le 12/07, jamais retouche. Chaque patch depuis ajoutait donc des items que l'app peut
+REM pricer mais pas nommer - elle retombe sur l'id brut a l'ecran. Il passe ICI, apres routesmeta,
+REM parce qu'il complete les noms des ids que les datasets viennent de produire : plus tot, il ne
+REM les verrait pas. Il ne coute rien quand il n'y a rien a faire (il retient les ids que l'amont
+REM ne nomme pas non plus et ne retelecharge pas pour eux).
+call python scripts\build_itemnames.py  >> "%LOG%" 2>&1
+if errorlevel 1 echo *** ECHEC build_itemnames.py - de nouveaux items resteront sans nom >> "%LOG%"
 call python scripts\build_toptraded.py  >> "%LOG%" 2>&1
 if errorlevel 1 echo *** ECHEC build_toptraded.py - toptraded.json reste PERIME >> "%LOG%"
 call python scripts\build_routes.py     >> "%LOG%" 2>&1
@@ -87,7 +95,7 @@ if errorlevel 1 echo *** ECHEC build_journals.py - journals.json reste PERIME >>
 REM routesmeta bouge a chaque run (univers marche), recipes/craftmeta seulement au patch, et
 REM aobin_stamp.json note quel dump a servi - il est VERSIONNE expres : sans lui, un clone neuf
 REM ne sait pas d'ou viennent les datasets publies et reconstruit tout pour rien au premier run.
-git add docs/data/baseline.json docs/data/materials.json docs/data/toptraded.json docs/data/routes.json docs/data/journals.json docs/data/routesmeta.json docs/data/recipes.json docs/data/craftmeta.json scripts/data/aobin_stamp.json
+git add docs/data/baseline.json docs/data/materials.json docs/data/toptraded.json docs/data/routes.json docs/data/journals.json docs/data/routesmeta.json docs/data/recipes.json docs/data/craftmeta.json docs/data/items.json scripts/data/aobin_stamp.json
 git diff --cached --quiet && ( echo no data changes, nothing to commit >> "%LOG%" & goto :done )
 git commit -m "chore: local scheduled price data refresh" >> "%LOG%" 2>&1
 git push >> "%LOG%" 2>&1 && ( echo pushed OK >> "%LOG%" ) || ( echo PUSH FAILED - check git credentials >> "%LOG%" )

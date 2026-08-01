@@ -6,4 +6,5 @@ refresh.lock
 scripts/data/routes_seen.json
 scripts/data/_aobin_items.json
 scripts/data/_aobin_items.part
+scripts/data/itemnames_orphans.json
 refresh-verrou.log

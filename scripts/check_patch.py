@@ -67,6 +67,11 @@ BUILDERS = [
     ("build_craft_extra.py", []),
 ]
 OUTPUTS = ["recipes.json", "craftmeta.json"]
+# build_itemnames.py is run separately, AFTER the four above and after routesmeta: it fills in the
+# names for whatever ids the freshly rebuilt datasets now contain, so it has to see them first. It
+# also reads a DIFFERENT upstream file (formatted/items.json, the localised one), so it cannot share
+# the --dump cache and pulls its own copy - once per patch, not per run.
+NAMES_BUILDER = "build_itemnames.py"
 
 
 def upstream_fingerprint():
@@ -100,11 +105,10 @@ def fetch_dump(dest):
 
 
 def unnamed_ids():
-    """Ids the app can price but cannot NAME. items.json (localised names) has no builder in this
-    repo - it was produced by hand once, and its 6053 enchant variants are derived, not upstream.
-    So a patch that adds items leaves them nameless and the app falls back to the raw id. Not
-    fixed here (reproducing that derivation is its own job); made VISIBLE, with a number, so it
-    stops being a silent drift."""
+    """Ids the app can price but cannot NAME - it falls back to printing the raw id. Kept as a
+    reported number even now that build_itemnames.py closes the gap, because it cannot always close
+    it fully: some ids the market carries have no name in the client's own table either (retired
+    content still holding orders). A rising count is the signal that something upstream moved."""
     try:
         names = json.loads((ROOT / "docs" / "data" / "items.json").read_text(encoding="utf-8"))
         ids = json.loads((ROOT / "docs" / "data" / "routesmeta.json").read_text(encoding="utf-8"))["ids"]
