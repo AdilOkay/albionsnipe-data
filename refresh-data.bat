@@ -44,10 +44,22 @@ REM build_baseline.py et build_materials.py plantaient a CHAQUE run depuis le 29
 REM a deux sur des lignes de recette qui avaient gagne des champs), le .bat continuait, commitait
 REM routes et toptraded seuls, et affichait "pushed OK". Resultat : la donnee Black Market du site
 REM gelee plus de 32 h sans le moindre signal. Un echec doit se voir dans le log ET dans le commit.
-REM Des appels A PLAT, un test derriere chacun (ils etaient quatre le 30/07, sept aujourd'hui).
+REM Des appels A PLAT, un test derriere chacun (ils etaient quatre le 30/07, huit aujourd'hui).
 REM PAS de boucle for et PAS d'accumulation dans une variable : ca demanderait
 REM EnableDelayedExpansion, que ce fichier n'active pas, et le bloc parenthese est precisement ce
 REM qui avait produit trois bugs invisibles a la relecture le 30/07.
+REM
+REM REESSAI AJOUTE 01/08. Chaque builder est appele, et RELANCE UNE FOIS s'il a echoue ; le
+REM message d'echec ne tombe qu'apres les deux tentatives. Trois lignes a plat par builder, dans
+REM cet ordre exact et pas un autre : `echo` REUSSIT, donc il remet errorlevel a zero. Mettre le
+REM message entre le test et la relance desamorcerait le second `if errorlevel 1`, qui ne se
+REM declencherait plus jamais - le piege classique de ce fichier.
+REM Pourquoi : build_toptraded.py est mort le 31/07 et le 01/08, les deux fois au run de 5h03,
+REM d'un arret NET a 5200/8048 - pas de traceback, pas de "chunk failed", rien dans les journaux
+REM Windows. Cause inconnue, 2 echecs sur 68 runs. Sans relance, un builder qui tombe laisse son
+REM dataset 4 h en retard jusqu'au cycle suivant. La relance couvre aussi les rafales de 429
+REM d'AODP, qui sont la panne la plus banale ici.
+REM Une deuxieme serie de lignes de progression dans le log = un reessai a eu lieu.
 REM AJOUTE 01/08. Les jeux de donnees issus du dump du jeu (recipes, craftmeta) ne changent qu'au
 REM patch, donc ils etaient hors planning - a raison. Ce qui manquait, c'est ce qui les y remet :
 REM ils n'etaient reconstruits que quand quelqu'un y pensait, et le jour d'un patch l'app sert les
@@ -56,12 +68,15 @@ REM a l'amont (une requete HEAD, pas de corps) et ne reconstruit que si elle a b
 REM aussi le dump en cache local, dont build_routesmeta.py se sert plus bas.
 REM Il DOIT passer en premier : un patch ajoute des cles que baseline et materials indexent.
 call python scripts\check_patch.py      >> "%LOG%" 2>&1
-if errorlevel 1 echo *** ECHEC check_patch.py - recipes/craftmeta restent sur l'ancien patch >> "%LOG%"
+if errorlevel 1 call python scripts\check_patch.py      >> "%LOG%" 2>&1
+if errorlevel 1 echo *** ECHEC check_patch.py x2 - recipes/craftmeta restent sur l'ancien patch >> "%LOG%"
 
 call python scripts\build_baseline.py   >> "%LOG%" 2>&1
-if errorlevel 1 echo *** ECHEC build_baseline.py - baseline.json reste PERIME >> "%LOG%"
+if errorlevel 1 call python scripts\build_baseline.py   >> "%LOG%" 2>&1
+if errorlevel 1 echo *** ECHEC build_baseline.py x2 - baseline.json reste PERIME >> "%LOG%"
 call python scripts\build_materials.py  >> "%LOG%" 2>&1
-if errorlevel 1 echo *** ECHEC build_materials.py - materials.json reste PERIME >> "%LOG%"
+if errorlevel 1 call python scripts\build_materials.py  >> "%LOG%" 2>&1
+if errorlevel 1 echo *** ECHEC build_materials.py x2 - materials.json reste PERIME >> "%LOG%"
 REM AJOUTE 01/08, et l'ordre est la raison d'etre de cette ligne. build_routesmeta.py annoncait
 REM "rebuild only on a game patch" dans son propre en-tete, et c'est faux : son univers est
 REM baseline.json + materials.json, reconstruits deux fois par jour sur le marche reel. Mesure le
@@ -71,7 +86,8 @@ REM quelqu'un y a pense pour la derniere fois. Il passe donc APRES ses deux sour
 REM build_routes.py, qui price la liste d'ids qu'il produit. Le --dump evite de retelecharger
 REM 16 Mo toutes les 4 h pour relire les memes octets.
 call python scripts\build_routesmeta.py --dump scripts\data\_aobin_items.json  >> "%LOG%" 2>&1
-if errorlevel 1 echo *** ECHEC build_routesmeta.py - routesmeta.json reste PERIME >> "%LOG%"
+if errorlevel 1 call python scripts\build_routesmeta.py --dump scripts\data\_aobin_items.json  >> "%LOG%" 2>&1
+if errorlevel 1 echo *** ECHEC build_routesmeta.py x2 - routesmeta.json reste PERIME >> "%LOG%"
 REM AJOUTE 01/08. items.json (les noms localises) n'avait AUCUN generateur : fait a la main une
 REM fois le 12/07, jamais retouche. Chaque patch depuis ajoutait donc des items que l'app peut
 REM pricer mais pas nommer - elle retombe sur l'id brut a l'ecran. Il passe ICI, apres routesmeta,
@@ -79,18 +95,22 @@ REM parce qu'il complete les noms des ids que les datasets viennent de produire 
 REM les verrait pas. Il ne coute rien quand il n'y a rien a faire (il retient les ids que l'amont
 REM ne nomme pas non plus et ne retelecharge pas pour eux).
 call python scripts\build_itemnames.py  >> "%LOG%" 2>&1
-if errorlevel 1 echo *** ECHEC build_itemnames.py - de nouveaux items resteront sans nom >> "%LOG%"
+if errorlevel 1 call python scripts\build_itemnames.py  >> "%LOG%" 2>&1
+if errorlevel 1 echo *** ECHEC build_itemnames.py x2 - de nouveaux items resteront sans nom >> "%LOG%"
 call python scripts\build_toptraded.py  >> "%LOG%" 2>&1
-if errorlevel 1 echo *** ECHEC build_toptraded.py - toptraded.json reste PERIME >> "%LOG%"
+if errorlevel 1 call python scripts\build_toptraded.py  >> "%LOG%" 2>&1
+if errorlevel 1 echo *** ECHEC build_toptraded.py x2 - toptraded.json reste PERIME >> "%LOG%"
 call python scripts\build_routes.py     >> "%LOG%" 2>&1
-if errorlevel 1 echo *** ECHEC build_routes.py - routes.json reste PERIME >> "%LOG%"
+if errorlevel 1 call python scripts\build_routes.py     >> "%LOG%" 2>&1
+if errorlevel 1 echo *** ECHEC build_routes.py x2 - routes.json reste PERIME >> "%LOG%"
 REM AJOUTE 31/07. journals.json porte des PRIX (journal vide / plein par ville) et son propre
 REM en-tete dit "rebuild alongside baseline/materials (2x/day)" - il ne l'a jamais ete. Il ne
 REM bougeait qu'aux ships de l'app, et build_public.py, une fois capable de dater ce qu'il
 REM embarque, l'a mesure a 231 h. La couche journaux du Craft Planner tournait donc sur des
 REM prix de dix jours pendant que les quatre autres datasets avaient trois heures.
 call python scripts\build_journals.py   >> "%LOG%" 2>&1
-if errorlevel 1 echo *** ECHEC build_journals.py - journals.json reste PERIME >> "%LOG%"
+if errorlevel 1 call python scripts\build_journals.py   >> "%LOG%" 2>&1
+if errorlevel 1 echo *** ECHEC build_journals.py x2 - journals.json reste PERIME >> "%LOG%"
 
 REM routesmeta bouge a chaque run (univers marche), recipes/craftmeta seulement au patch, et
 REM aobin_stamp.json note quel dump a servi - il est VERSIONNE expres : sans lui, un clone neuf
