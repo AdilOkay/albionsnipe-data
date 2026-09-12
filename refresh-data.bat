@@ -67,14 +67,14 @@ REM recettes de la version precedente sans le moindre signal. check_patch.py dem
 REM a l'amont (une requete HEAD, pas de corps) et ne reconstruit que si elle a bouge. Il garde
 REM aussi le dump en cache local, dont build_routesmeta.py se sert plus bas.
 REM Il DOIT passer en premier : un patch ajoute des cles que baseline et materials indexent.
-call python scripts\check_patch.py      >> "%LOG%" 2>&1
+call py -3.12 scripts\check_patch.py      >> "%LOG%" 2>&1
 if errorlevel 1 call python scripts\check_patch.py      >> "%LOG%" 2>&1
 if errorlevel 1 echo *** ECHEC check_patch.py x2 - recipes/craftmeta restent sur l'ancien patch >> "%LOG%"
 
-call python scripts\build_baseline.py   >> "%LOG%" 2>&1
+call py -3.12 scripts\build_baseline.py   >> "%LOG%" 2>&1
 if errorlevel 1 call python scripts\build_baseline.py   >> "%LOG%" 2>&1
 if errorlevel 1 echo *** ECHEC build_baseline.py x2 - baseline.json reste PERIME >> "%LOG%"
-call python scripts\build_materials.py  >> "%LOG%" 2>&1
+call py -3.12 scripts\build_materials.py  >> "%LOG%" 2>&1
 if errorlevel 1 call python scripts\build_materials.py  >> "%LOG%" 2>&1
 if errorlevel 1 echo *** ECHEC build_materials.py x2 - materials.json reste PERIME >> "%LOG%"
 REM AJOUTE 01/08, et l'ordre est la raison d'etre de cette ligne. build_routesmeta.py annoncait
@@ -85,7 +85,7 @@ REM Laisse a la cadence des patchs, l'univers de Routes est la photo du marche d
 REM quelqu'un y a pense pour la derniere fois. Il passe donc APRES ses deux sources et AVANT
 REM build_routes.py, qui price la liste d'ids qu'il produit. Le --dump evite de retelecharger
 REM 16 Mo toutes les 4 h pour relire les memes octets.
-call python scripts\build_routesmeta.py --dump scripts\data\_aobin_items.json  >> "%LOG%" 2>&1
+call py -3.12 scripts\build_routesmeta.py --dump scripts\data\_aobin_items.json  >> "%LOG%" 2>&1
 if errorlevel 1 call python scripts\build_routesmeta.py --dump scripts\data\_aobin_items.json  >> "%LOG%" 2>&1
 if errorlevel 1 echo *** ECHEC build_routesmeta.py x2 - routesmeta.json reste PERIME >> "%LOG%"
 REM AJOUTE 01/08. items.json (les noms localises) n'avait AUCUN generateur : fait a la main une
@@ -94,13 +94,13 @@ REM pricer mais pas nommer - elle retombe sur l'id brut a l'ecran. Il passe ICI,
 REM parce qu'il complete les noms des ids que les datasets viennent de produire : plus tot, il ne
 REM les verrait pas. Il ne coute rien quand il n'y a rien a faire (il retient les ids que l'amont
 REM ne nomme pas non plus et ne retelecharge pas pour eux).
-call python scripts\build_itemnames.py  >> "%LOG%" 2>&1
+call py -3.12 scripts\build_itemnames.py  >> "%LOG%" 2>&1
 if errorlevel 1 call python scripts\build_itemnames.py  >> "%LOG%" 2>&1
 if errorlevel 1 echo *** ECHEC build_itemnames.py x2 - de nouveaux items resteront sans nom >> "%LOG%"
-call python scripts\build_toptraded.py  >> "%LOG%" 2>&1
+call py -3.12 scripts\build_toptraded.py  >> "%LOG%" 2>&1
 if errorlevel 1 call python scripts\build_toptraded.py  >> "%LOG%" 2>&1
 if errorlevel 1 echo *** ECHEC build_toptraded.py x2 - toptraded.json reste PERIME >> "%LOG%"
-call python scripts\build_routes.py     >> "%LOG%" 2>&1
+call py -3.12 scripts\build_routes.py     >> "%LOG%" 2>&1
 if errorlevel 1 call python scripts\build_routes.py     >> "%LOG%" 2>&1
 if errorlevel 1 echo *** ECHEC build_routes.py x2 - routes.json reste PERIME >> "%LOG%"
 REM AJOUTE 31/07. journals.json porte des PRIX (journal vide / plein par ville) et son propre
@@ -108,7 +108,7 @@ REM en-tete dit "rebuild alongside baseline/materials (2x/day)" - il ne l'a jama
 REM bougeait qu'aux ships de l'app, et build_public.py, une fois capable de dater ce qu'il
 REM embarque, l'a mesure a 231 h. La couche journaux du Craft Planner tournait donc sur des
 REM prix de dix jours pendant que les quatre autres datasets avaient trois heures.
-call python scripts\build_journals.py   >> "%LOG%" 2>&1
+call py -3.12 scripts\build_journals.py   >> "%LOG%" 2>&1
 if errorlevel 1 call python scripts\build_journals.py   >> "%LOG%" 2>&1
 if errorlevel 1 echo *** ECHEC build_journals.py x2 - journals.json reste PERIME >> "%LOG%"
 

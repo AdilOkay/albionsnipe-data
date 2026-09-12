@@ -35,11 +35,12 @@ CONTRAT
 param(
     [Parameter(ParameterSetName = 'Acquire')][switch]$Acquire,
     [Parameter(ParameterSetName = 'Release')][switch]$Release,
-    [string]$Root = (Split-Path -Parent $PSScriptRoot),
+    [string]$Root,
     [int]$StaleHours = 4
 )
 
 $ErrorActionPreference = 'Stop'
+if ([string]::IsNullOrWhiteSpace($Root)) { $Root = Split-Path -Parent $PSScriptRoot }
 $lock = Join-Path $Root 'refresh.lock'
 $log  = Join-Path $Root 'refresh-verrou.log'
 

@@ -26,6 +26,9 @@ from pathlib import Path
 
 AOBIN_URL = "https://raw.githubusercontent.com/ao-data/ao-bin-dumps/master/items.json"
 GEAR_BUCKETS = ("weapon", "equipmentitem", "transformationweapon")
+PRODUCTION_GEAR_CATEGORIES = {
+    "weapons", "mainhand", "offhand", "armors", "head", "shoes", "bags", "capes"
+}
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = ROOT / "docs" / "data" / "baseline.json"
 OUT = ROOT / "docs" / "data" / "recipes.json"
@@ -114,6 +117,61 @@ def recipe_for(idx, base, ench):
     return None, 1                      # enchant level not present
 
 
+def is_production_gear(item):
+    """True for craftable marketplace combat gear that belongs in the BM universe.
+
+    The existing recipe file seeds the next baseline build, so patch-added gear cannot depend on
+    already being in that file. Internal prototype rows and gathering equipment are deliberately
+    excluded even when the dump exposes a recipe and a marketplace flag.
+    """
+    if not isinstance(item, dict):
+        return False
+    name = item.get("@uniquename", "")
+    try:
+        tier = int(item.get("@tier", 0) or 0)
+    except (TypeError, ValueError):
+        return False
+    recipe, _ = craft_resources(item)
+    return (
+        bool(name)
+        and "_PROTOTYPE" not in name
+        and item.get("@showinmarketplace") == "true"
+        and item.get("@shopcategory") in PRODUCTION_GEAR_CATEGORIES
+        and 4 <= tier <= 8
+        and bool(recipe)
+    )
+
+
+def add_missing_production_gear(recipes, batches, dump):
+    """Seed recipe keys introduced by a patch before baseline.json can know about them."""
+    added = 0
+    idx = index_gear(dump)
+    for bucket in GEAR_BUCKETS:
+        for item in dump["items"].get(bucket, []):
+            if not is_production_gear(item):
+                continue
+            base = item["@uniquename"]
+            enchantments = (item.get("enchantments") or {}).get("enchantment")
+            enchantments = enchantments if isinstance(enchantments, list) else ([enchantments] if enchantments else [])
+            levels = [0] + sorted({
+                int(node.get("@enchantmentlevel", 0) or 0)
+                for node in enchantments
+                if isinstance(node, dict) and node.get("craftingrequirements")
+            })
+            for ench in levels:
+                key = base if ench == 0 else f"{base}@{ench}"
+                if key in recipes:
+                    continue
+                recipe, batch = recipe_for(idx, base, ench)
+                if not recipe:
+                    continue
+                recipes[key] = recipe
+                if batch != 1:
+                    batches[key] = batch
+                added += 1
+    return added
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dump", help="path to a local ao-bin-dumps items.json")
@@ -138,30 +196,12 @@ def main():
             if batch != 1:
                 batches[key] = batch
 
-    # transformationweapon = the shapeshifter weapons (Lightcaller, Bloodmoon, Stillgaze, ...).
-    # Craftable gear sold at the Black Market, but never seeded into the frozen baseline universe,
-    # so they were invisible to the planner. Enumerate the bucket (T4-T8) and add their keys here;
-    # build_baseline then resolves metadata + Black Market prices from the same buckets. Standard
-    # artefact-weapon model: refined resources + the SHAPESHIFTER artefact + a rare tracking mat.
-    added = 0
-    for e in dump["items"].get("transformationweapon", []):
-        if not (isinstance(e, dict) and e.get("@uniquename") and e.get("@shopcategory")):
-            continue
-        base = e["@uniquename"]
-        if len(base) < 2 or not base[1].isdigit() or not (4 <= int(base[1]) <= 8):
-            continue
-        for ench in range(0, 5):                      # base + each enchant level that has a recipe
-            k = base if ench == 0 else f"{base}@{ench}"
-            if k in recipes:                          # never override an existing entry
-                continue
-            r, batch = recipe_for(idx, base, ench)
-            if isinstance(r, list) and r:
-                recipes[k] = r
-                if batch != 1:
-                    batches[k] = batch
-                added += 1
+    # A patch can add normal equipment as well as a new bucket. Seed every production-grade gear
+    # row from the dump before baseline.json is rebuilt, otherwise recipes and baseline wait on
+    # each other forever. This retains the Shapeshifter coverage and adds Dragonfire's armor set.
+    added = add_missing_production_gear(recipes, batches, dump)
     if added:
-        print(f"transformationweapon (shapeshifter): +{added} recipe keys added to the universe")
+        print(f"patch-added marketplace gear: +{added} recipe keys added to the universe")
 
     payload = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

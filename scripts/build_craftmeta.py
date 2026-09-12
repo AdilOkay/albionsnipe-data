@@ -2,7 +2,7 @@
 """
 build_craftmeta.py - AlbionSnipe craft metadata (item value + bonus city)
 
-Emits docs/data/craftmeta.json: for every baseline gear key,
+Emits docs/data/craftmeta.json: for every recipe key,
   - iv : Item Value = sum of the materials' @itemvalue (ao-bin-dumps) x count.
          Drives the exact station fee: nutrition = iv x 0.1125,
          fee = nutrition x (station fee per 100 nutrition) / 100.
@@ -43,7 +43,6 @@ import argparse, json, re, sys, urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-BASELINE = ROOT / "docs" / "data" / "baseline.json"
 RECIPES = ROOT / "docs" / "data" / "recipes.json"
 CITIES = ROOT / "scripts" / "data" / "bonus_cities.json"
 OUT = ROOT / "docs" / "data" / "craftmeta.json"
@@ -166,18 +165,24 @@ def item_iv(key, recipes, idx, missing, seen, depth=0):
     return total
 
 
+def recipe_keys(payload):
+    """Use the patch-built recipe universe directly, before baseline has been refreshed."""
+    return list((payload.get("items") or {}).keys())
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dump", help="local ao-bin-dumps items.json instead of downloading")
     args = ap.parse_args()
 
-    keys = list(json.loads(BASELINE.read_text(encoding="utf-8"))["items"].keys())
-    recipes = json.loads(RECIPES.read_text(encoding="utf-8"))["items"]
+    recipe_payload = json.loads(RECIPES.read_text(encoding="utf-8"))
+    keys = recipe_keys(recipe_payload)
+    recipes = recipe_payload["items"]
     cat2city = {k: v for k, v in json.loads(CITIES.read_text(encoding="utf-8")).items() if not k.startswith("_")}
     dump = load_dump(args.dump)
     idx = index_dump(dump)
     jmap = journal_map(dump)
-    print(f"{len(keys)} baseline keys | {len(idx)} dump uniquenames | {len(cat2city)} bonus categories | {len(jmap)} journal-mapped ids")
+    print(f"{len(keys)} recipe keys | {len(idx)} dump uniquenames | {len(cat2city)} bonus categories | {len(jmap)} journal-mapped ids")
 
     items, iv_ok, iv_null, bc_ok, fc_ok, ur_ok, jb_ok, ff_ok = {}, 0, 0, 0, 0, 0, 0, 0
     missing_mats = {}
