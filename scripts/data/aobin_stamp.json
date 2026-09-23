@@ -1,7 +1,7 @@
 {
- "etag": "a3f8af5abe21b2cd66c47898ce6545ef4996eaff1bfd0cf209ba55845cd61140",
- "size": 17454750,
- "checked_at": "2026-09-08T12:00:03Z",
+ "etag": "3f08e7c758eb2f8c07e6246d60ce8f448d78157f54e4db716d2d68486b299392",
+ "size": 17457120,
+ "checked_at": "2026-09-23T15:03:19Z",
  "source": "https://raw.githubusercontent.com/ao-data/ao-bin-dumps/master/items.json",
  "rebuilt": [
   "recipes.json",
